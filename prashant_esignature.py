@@ -25,61 +25,72 @@ if uploaded_file:
         # Load image file
         img = Image.open(uploaded_file).convert("RGB")
 
-    st.image(img, caption="Uploaded Document Preview", use_container_width=True)
+    st.image(img, caption="📄 Uploaded Document Preview", use_container_width=True)
 
     st.write("✍️ Choose how you want to sign:")
 
-    # ✅ Fixed line here
-    sign_method = st.radio("Select Signature Type", ["Draw Signature", "Type Signature"])
+    sign_method = st.radio(
+        "Select Signature Type",
+        ["Draw Signature", "Type Signature", "Upload Signature Image"]
+    )
 
-    sig = None  # will hold final signature image
+    sig = None  # final signature image
 
+    # ------------------- DRAW SIGNATURE -------------------
     if sign_method == "Draw Signature":
-        st.write("Draw your signature below:")
+        st.write("🖊️ Draw your signature below:")
         canvas_result = st_canvas(
             fill_color="rgba(255,255,255,0)",
-            stroke_width=2,
+            stroke_width=3,
             stroke_color="black",
             background_color="white",
             update_streamlit=True,
-            height=150,
-            width=400,
+            height=180,
+            width=500,
             drawing_mode="freedraw",
             key="canvas",
         )
-
         if canvas_result.image_data is not None:
             sig = Image.fromarray(canvas_result.image_data.astype("uint8")).convert("RGBA")
 
-    else:  # Typed signature
+    # ------------------- TYPE SIGNATURE -------------------
+    elif sign_method == "Type Signature":
         user_name = st.text_input("Enter your signature text", "John Doe")
-        font_size = st.slider("Font Size", 30, 150, 80)
+        font_size = st.slider("Font Size", 30, 200, 100)
         font_color = st.color_picker("Font Color", "#000000")
 
-        # Try Arial font, fallback if not available
         try:
             font = ImageFont.truetype("arial.ttf", font_size)
         except:
             font = ImageFont.load_default()
 
-        # Create a blank image for text signature
-        sig = Image.new("RGBA", (800, 200), (255, 255, 255, 0))
+        # Dynamic image size to fit text
+        dummy_img = Image.new("RGBA", (10, 10), (255, 255, 255, 0))
+        draw = ImageDraw.Draw(dummy_img)
+        text_width, text_height = draw.textsize(user_name, font=font)
+
+        sig = Image.new("RGBA", (text_width + 40, text_height + 40), (255, 255, 255, 0))
         draw = ImageDraw.Draw(sig)
-        draw.text((20, 50), user_name, font=font, fill=font_color)
+        draw.text((20, 20), user_name, font=font, fill=font_color)
 
         st.image(sig, caption="🖊️ Signature Preview")
 
+    # ------------------- UPLOAD SIGNATURE IMAGE -------------------
+    else:
+        uploaded_sig = st.file_uploader("Upload your signature image", type=["png", "jpg", "jpeg"])
+        if uploaded_sig:
+            sig = Image.open(uploaded_sig).convert("RGBA")
+            st.image(sig, caption="🖋️ Signature Preview")
+
+    # ------------------- APPLY SIGNATURE -------------------
     if sig is not None and st.button("✅ Apply Signature"):
-        # Resize signature smaller for placement
-        sig = sig.resize((250, 100), Image.LANCZOS)
+        sig = sig.resize((300, 120), Image.LANCZOS)
 
-        # Place signature at bottom-right of document
         doc_img = img.copy()
-        doc_img.paste(sig, (doc_img.width - 300, doc_img.height - 150), sig)
+        doc_img.paste(sig, (doc_img.width - 350, doc_img.height - 180), sig)
 
-        st.image(doc_img, caption="Signed Document", use_container_width=True)
+        st.image(doc_img, caption="📄 Signed Document", use_container_width=True)
 
-        # Save as output
         buf = io.BytesIO()
         doc_img.save(buf, format="PNG")
         st.download_button(
@@ -88,3 +99,4 @@ if uploaded_file:
             file_name="signed_document.png",
             mime="image/png"
         )
+
