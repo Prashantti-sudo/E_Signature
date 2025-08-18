@@ -1,107 +1,58 @@
 import streamlit as st
-from Crypto.Util.number import getPrime
-from random import randint
-from hashlib import sha1
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.units import inch
+from io import BytesIO
 
-# Hash of message in SHA1
-def hash_function(message):
-    hashed = sha1(message.encode("UTF-8")).hexdigest()
-    return hashed
+st.set_page_config(page_title="PDF E-Signature App", layout="centered")
 
-# Modular Multiplicative Inverse
-def mod_inverse(a, m):
-    a = a % m
-    for x in range(1, m):
-        if (a * x) % m == 1:
-            return x
-    return 1
+st.title("📄✍️ PDF E-Signature App")
 
-# Global parameters: q, p, g
-def parameter_generation(h):
-    q = getPrime(5)
-    p = getPrime(10)
+st.write("Upload a PDF, type your signature, and download the signed version.")
 
-    while (p - 1) % q != 0:
-        p = getPrime(10)
-        q = getPrime(5)
+# Upload PDF
+uploaded_file = st.file_uploader("Upload a PDF file", type=["pdf"])
 
-    g = pow(h, int((p - 1) / q), p)
-    if g == 1:
-        g = pow(h + 1, int((p - 1) / q), p)
+if uploaded_file:
+    st.success("✅ PDF uploaded successfully!")
 
-    return p, q, g
+    # Signature text input
+    signature_text = st.text_input("Enter your signature text", "John Doe")
+    x_pos = st.slider("X Position (in inches)", 0.5, 6.0, 2.0, 0.1)
+    y_pos = st.slider("Y Position (in inches)", 0.5, 10.0, 1.0, 0.1)
 
-# Per-user key pair
-def per_user_key(p, q, g):
-    x = randint(1, q - 1)  # private key
-    y = pow(g, x, p)      # public key
-    return x, y
+    if st.button("Apply Signature"):
+        # Create a temporary PDF with signature
+        packet = BytesIO()
+        can = canvas.Canvas(packet, pagesize=letter)
+        can.setFont("Helvetica-Bold", 18)
+        can.drawString(x_pos * inch, y_pos * inch, signature_text)
+        can.save()
 
-# Signing function
-def signature(text, p, q, g, x):
-    hash_component = hash_function(text)
-    r, s = 0, 0
-    while s == 0 or r == 0:
-        k = randint(1, q - 1)
-        r = (pow(g, k, p)) % q
-        i = mod_inverse(k, q)
-        hashed = int(hash_component, 16)
-        s = (i * (hashed + (x * r))) % q
-    return r, s, k, hash_component
+        packet.seek(0)
+        signature_pdf = PdfReader(packet)
 
-# Verification function
-def verification(text, p, q, g, r, s, y):
-    hash_component = hash_function(text)
-    w = mod_inverse(s, q)
-    hashed = int(hash_component, 16)
-    u1 = (hashed * w) % q
-    u2 = (r * w) % q
-    v = ((pow(g, u1, p) * pow(y, u2, p)) % p) % q
-    return v == r, hash_component, u1, u2, v, w
+        # Read uploaded PDF
+        reader = PdfReader(uploaded_file)
+        writer = PdfWriter()
 
-# ---------------- STREAMLIT APP -----------------
-st.title("🔐 Digital Signature Algorithm (DSA) Demo")
+        # Merge signature on first page
+        for i, page in enumerate(reader.pages):
+            if i == 0:
+                page.merge_page(signature_pdf.pages[0])
+            writer.add_page(page)
 
-st.sidebar.header("DSA Parameters")
-h = st.sidebar.number_input("Enter integer h (1 < h < p-1):", min_value=2, value=5)
+        # Output signed PDF
+        output = BytesIO()
+        writer.write(output)
+        output.seek(0)
 
-if st.sidebar.button("Generate Parameters"):
-    p, q, g = parameter_generation(h)
-    st.session_state["p"], st.session_state["q"], st.session_state["g"] = p, q, g
-    st.success(f"Generated Parameters → p: {p}, q: {q}, g: {g}")
+        st.success("✅ Signature added successfully!")
 
-if "p" in st.session_state:
-    p, q, g = st.session_state["p"], st.session_state["q"], st.session_state["g"]
-    st.subheader("🔑 Key Generation")
-    if st.button("Generate Keys"):
-        x, y = per_user_key(p, q, g)
-        st.session_state["x"], st.session_state["y"] = x, y
-        st.info(f"Private Key (x): {x}")
-        st.success(f"Public Key (y): {y}")
-
-if "x" in st.session_state:
-    st.subheader("✍️ Sign Document")
-    text_to_sign = st.text_area("Enter message/document to sign")
-    if st.button("Sign Message") and text_to_sign:
-        r, s, k, hash_sent = signature(text_to_sign, p, q, g, st.session_state["x"])
-        st.session_state["r"], st.session_state["s"], st.session_state["k"] = r, s, k
-        st.session_state["hash_sent"] = hash_sent
-        st.write("**Hash (SHA1):**", hash_sent)
-        st.write(f"r: {r}, s: {s}, k: {k}")
-
-if "r" in st.session_state:
-    st.subheader("✅ Verify Signature")
-    text_to_verify = st.text_area("Enter message/document to verify")
-    if st.button("Verify Signature") and text_to_verify:
-        valid, hash_recv, u1, u2, v, w = verification(
-            text_to_verify, p, q, g,
-            st.session_state["r"],
-            st.session_state["s"],
-            st.session_state["y"]
+        st.download_button(
+            label="📥 Download Signed PDF",
+            data=output,
+            file_name="signed_document.pdf",
+            mime="application/pdf"
         )
-        st.write("**Hash (Received):**", hash_recv)
-        st.write(f"w: {w}, u1: {u1}, u2: {u2}, v: {v}")
-        if valid:
-            st.success("The signature is VALID ✅")
-        else:
-            st.error("The signature is INVALID ❌")
