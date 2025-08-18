@@ -1,83 +1,107 @@
 import streamlit as st
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.exceptions import InvalidSignature
-import base64
+from Crypto.Util.number import getPrime
+from random import randint
+from hashlib import sha1
 
-st.set_page_config(page_title="Digital Signature App", page_icon="🔐")
-st.title("🔐 Digital Signature App (RSA)")
+# Hash of message in SHA1
+def hash_function(message):
+    hashed = sha1(message.encode("UTF-8")).hexdigest()
+    return hashed
 
-# Sidebar selection
-mode = st.sidebar.radio("Choose Mode", ["Generate Keys", "Sign Data", "Verify Signature"])
+# Modular Multiplicative Inverse
+def mod_inverse(a, m):
+    a = a % m
+    for x in range(1, m):
+        if (a * x) % m == 1:
+            return x
+    return 1
 
-# Generate RSA Key Pair
-if mode == "Generate Keys":
-    st.subheader("🔑 Generate RSA Key Pair")
+# Global parameters: q, p, g
+def parameter_generation(h):
+    q = getPrime(5)
+    p = getPrime(10)
+
+    while (p - 1) % q != 0:
+        p = getPrime(10)
+        q = getPrime(5)
+
+    g = pow(h, int((p - 1) / q), p)
+    if g == 1:
+        g = pow(h + 1, int((p - 1) / q), p)
+
+    return p, q, g
+
+# Per-user key pair
+def per_user_key(p, q, g):
+    x = randint(1, q - 1)  # private key
+    y = pow(g, x, p)      # public key
+    return x, y
+
+# Signing function
+def signature(text, p, q, g, x):
+    hash_component = hash_function(text)
+    r, s = 0, 0
+    while s == 0 or r == 0:
+        k = randint(1, q - 1)
+        r = (pow(g, k, p)) % q
+        i = mod_inverse(k, q)
+        hashed = int(hash_component, 16)
+        s = (i * (hashed + (x * r))) % q
+    return r, s, k, hash_component
+
+# Verification function
+def verification(text, p, q, g, r, s, y):
+    hash_component = hash_function(text)
+    w = mod_inverse(s, q)
+    hashed = int(hash_component, 16)
+    u1 = (hashed * w) % q
+    u2 = (r * w) % q
+    v = ((pow(g, u1, p) * pow(y, u2, p)) % p) % q
+    return v == r, hash_component, u1, u2, v, w
+
+# ---------------- STREAMLIT APP -----------------
+st.title("🔐 Digital Signature Algorithm (DSA) Demo")
+
+st.sidebar.header("DSA Parameters")
+h = st.sidebar.number_input("Enter integer h (1 < h < p-1):", min_value=2, value=5)
+
+if st.sidebar.button("Generate Parameters"):
+    p, q, g = parameter_generation(h)
+    st.session_state["p"], st.session_state["q"], st.session_state["g"] = p, q, g
+    st.success(f"Generated Parameters → p: {p}, q: {q}, g: {g}")
+
+if "p" in st.session_state:
+    p, q, g = st.session_state["p"], st.session_state["q"], st.session_state["g"]
+    st.subheader("🔑 Key Generation")
     if st.button("Generate Keys"):
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048
+        x, y = per_user_key(p, q, g)
+        st.session_state["x"], st.session_state["y"] = x, y
+        st.info(f"Private Key (x): {x}")
+        st.success(f"Public Key (y): {y}")
+
+if "x" in st.session_state:
+    st.subheader("✍️ Sign Document")
+    text_to_sign = st.text_area("Enter message/document to sign")
+    if st.button("Sign Message") and text_to_sign:
+        r, s, k, hash_sent = signature(text_to_sign, p, q, g, st.session_state["x"])
+        st.session_state["r"], st.session_state["s"], st.session_state["k"] = r, s, k
+        st.session_state["hash_sent"] = hash_sent
+        st.write("**Hash (SHA1):**", hash_sent)
+        st.write(f"r: {r}, s: {s}, k: {k}")
+
+if "r" in st.session_state:
+    st.subheader("✅ Verify Signature")
+    text_to_verify = st.text_area("Enter message/document to verify")
+    if st.button("Verify Signature") and text_to_verify:
+        valid, hash_recv, u1, u2, v, w = verification(
+            text_to_verify, p, q, g,
+            st.session_state["r"],
+            st.session_state["s"],
+            st.session_state["y"]
         )
-        public_key = private_key.public_key()
-
-        pem_private = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        )
-        pem_public = public_key.public_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PublicFormat.SubjectPublicKeyInfo
-        )
-
-        st.download_button("⬇️ Download Private Key", pem_private, "private_key.pem")
-        st.download_button("⬇️ Download Public Key", pem_public, "public_key.pem")
-
-# Sign Data
-elif mode == "Sign Data":
-    st.subheader("✍️ Sign Data")
-    priv_key_file = st.file_uploader("Upload Private Key (.pem)", type=["pem"])
-    data_file = st.file_uploader("Upload File to Sign", type=["txt", "pdf", "png", "jpg", "jpeg"])
-
-    if priv_key_file and data_file:
-        private_key = serialization.load_pem_private_key(
-            priv_key_file.read(),
-            password=None,
-        )
-        data = data_file.read()
-
-        if st.button("Generate Signature"):
-            signature = private_key.sign(
-                data,
-                padding.PKCS1v15(),
-                hashes.SHA256()
-            )
-            signature_b64 = base64.b64encode(signature)
-            st.success("✅ Signature generated successfully!")
-            st.code(signature_b64.decode(), language="bash")
-
-            st.download_button("⬇️ Download Signature", signature, "signature.sig")
-
-# Verify Signature
-elif mode == "Verify Signature":
-    st.subheader("🔎 Verify Signature")
-    pub_key_file = st.file_uploader("Upload Public Key (.pem)", type=["pem"])
-    data_file = st.file_uploader("Upload File", type=["txt", "pdf", "png", "jpg", "jpeg"])
-    sig_file = st.file_uploader("Upload Signature File (.sig)", type=["sig"])
-
-    if pub_key_file and data_file and sig_file:
-        public_key = serialization.load_pem_public_key(pub_key_file.read())
-        data = data_file.read()
-        signature = sig_file.read()
-
-        if st.button("Verify Signature"):
-            try:
-                public_key.verify(
-                    signature,
-                    data,
-                    padding.PKCS1v15(),
-                    hashes.SHA256()
-                )
-                st.success("✅ Signature is valid!")
-            except InvalidSignature:
-                st.error("❌ Verification failed! Invalid signature.")
+        st.write("**Hash (Received):**", hash_recv)
+        st.write(f"w: {w}, u1: {u1}, u2: {u2}, v: {v}")
+        if valid:
+            st.success("The signature is VALID ✅")
+        else:
+            st.error("The signature is INVALID ❌")
