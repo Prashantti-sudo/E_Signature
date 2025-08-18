@@ -1,14 +1,12 @@
 import streamlit as st
 from PIL import Image, ImageDraw, ImageFont
-from streamlit_drawable_canvas import st_canvas
 import fitz  # PyMuPDF
 import io
-import os
 
 st.set_page_config(page_title="Typed Signature App", page_icon="✍️")
 
 st.title("📄 Typed E-Signature Application")
-st.write("Upload a PDF/Image, type your name, and place your signature.")
+st.write("Upload a PDF/Image, type your name, pick a font, and place your signature.")
 
 # Upload document
 uploaded_file = st.file_uploader("Upload a PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
@@ -16,7 +14,7 @@ uploaded_file = st.file_uploader("Upload a PDF or Image", type=["pdf", "png", "j
 # User input name
 user_name = st.text_input("✍️ Enter Your Name for Signature", "John Doe")
 
-# Font options (add .ttf in project folder)
+# Font options (make sure .ttf files exist in your folder)
 font_options = {
     "Pacifico": "Pacifico.ttf",
     "Great Vibes": "GreatVibes-Regular.ttf",
@@ -38,56 +36,31 @@ if uploaded_file and user_name:
 
     st.image(img, caption="📄 Uploaded Document", use_container_width=True)
 
-    # Generate multiple signature styles
+    # Signature preview
     st.subheader("👉 Choose Signature Style")
-    previews = {}
-    for style, font_path in font_options.items():
-        try:
-            font = ImageFont.truetype(font_path, 80)  # Bigger text
-        except:
-            font = ImageFont.load_default()
+    selected_style = st.selectbox("Select font style", list(font_options.keys()))
 
-        sig_img = Image.new("RGBA", (500, 150), (255, 255, 255, 0))
-        draw = ImageDraw.Draw(sig_img)
-        draw.text((10, 10), user_name, font=font, fill="black")
-        previews[style] = sig_img
+    try:
+        font = ImageFont.truetype(font_options[selected_style], 150)  # much bigger now
+    except:
+        font = ImageFont.load_default()
 
-    # Display previews in columns
-    cols = st.columns(len(previews))
-    for i, (style, img_sig) in enumerate(previews.items()):
-        with cols[i]:
-            st.image(img_sig, caption=style)
-    selected_style = st.selectbox("Select your signature style", list(previews.keys()))
+    sig_img = Image.new("RGBA", (800, 250), (255, 255, 255, 0))  # bigger transparent canvas
+    draw = ImageDraw.Draw(sig_img)
+    draw.text((10, 20), user_name, font=font, fill="black")
 
-    # Use canvas to drag & drop
-    st.subheader("✍️ Drag & Place Your Signature")
-    canvas_result = st_canvas(
-        fill_color="rgba(255,255,255,0)",
-        stroke_width=0,
-        stroke_color="rgba(0,0,0,0)",
-        background_image=img,
-        update_streamlit=True,
-        height=img.height // 2,
-        width=img.width // 2,
-        drawing_mode="transform",  # Allow moving
-        key="canvas"
-    )
+    st.image(sig_img, caption=f"Signature Preview ({selected_style})")
+
+    # Position sliders
+    st.subheader("🖼️ Position Your Signature on Document")
+    x_pos = st.slider("Move horizontally (X)", 0, img.width, img.width // 2)
+    y_pos = st.slider("Move vertically (Y)", 0, img.height, img.height - 200)
 
     if st.button("Apply Signature"):
         doc_img = img.copy()
-        sig_img = previews[selected_style]
-
-        # Position signature at bottom-right (default)
-        position = (doc_img.width - sig_img.width - 50, doc_img.height - sig_img.height - 50)
-        doc_img.paste(sig_img, position, sig_img)
+        doc_img.paste(sig_img, (x_pos, y_pos), sig_img)
 
         st.image(doc_img, caption="✅ Signed Document", use_container_width=True)
 
         buf = io.BytesIO()
-        doc_img.save(buf, format="PNG")
-        st.download_button(
-            label="⬇️ Download Signed Document",
-            data=buf.getvalue(),
-            file_name="signed_document.png",
-            mime="image/png"
-        )
+        doc_img.save(buf,_
