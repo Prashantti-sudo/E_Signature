@@ -1,7 +1,6 @@
 streamlit
+streamlit-drawable-canvas
+pymupdf
 pypdf
 reportlab
 pillow
-pdf2image
-streamlit-drawable-canvas
-pdfplumber
