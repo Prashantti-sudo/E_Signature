@@ -1,62 +1,74 @@
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 import fitz  # PyMuPDF
-from PIL import Image
 import io
+import os
 
-st.set_page_config(page_title="PDF Signature App", page_icon="✍️")
+st.set_page_config(page_title="E-Signature on Documents", page_icon="✍️")
 
-st.title("📄 PDF Signature Application")
-st.write("Upload a PDF and your signature image, then place it on the PDF.")
+st.title("📄 E-Signature Application")
+st.write("Upload a file and add your typed digital signature.")
 
-# Upload PDF
-uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"])
-# Upload signature
-uploaded_sign = st.file_uploader("Upload Your Signature (PNG recommended)", type=["png", "jpg", "jpeg"])
+# Upload file
+uploaded_file = st.file_uploader("Upload a PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
 
-if uploaded_pdf and uploaded_sign:
-    # Load PDF
-    pdf_data = uploaded_pdf.read()
-    pdf = fitz.open(stream=pdf_data, filetype="pdf")
+# User types name for signature
+user_name = st.text_input("✍️ Enter Your Name for Signature", "John Doe")
 
-    # Load signature image
-    sign_img = Image.open(uploaded_sign).convert("RGBA")
+# Font choices (you can add more .ttf fonts in same folder)
+fonts = {
+    "Elegant": "arial.ttf",   # default system font
+    "Cursive": "times.ttf",   # replace with cursive font if available
+    "Bold": "arialbd.ttf"     # bold font
+}
 
-    # Resize signature
-    sign_img = sign_img.resize((150, 60))
+font_choice = st.selectbox("Choose Signature Font", list(fonts.keys()))
 
-    # Convert signature to bytes for PyMuPDF
-    sig_io = io.BytesIO()
-    sign_img.save(sig_io, format="PNG")
-    sig_bytes = sig_io.getvalue()
+if uploaded_file and user_name:
+    file_type = uploaded_file.type
+    
+    if "pdf" in file_type:
+        # Load first page of PDF as preview
+        pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+        page = pdf[0]
+        pix = page.get_pixmap()
+        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    else:
+        # Load image file
+        img = Image.open(uploaded_file).convert("RGB")
 
-    # Page selection
-    page_num = st.number_input("Select Page Number", min_value=1, max_value=len(pdf), value=1)
-    page = pdf[page_num - 1]
+    st.image(img, caption="Uploaded Document Preview", use_container_width=True)
 
-    # Get page size
-    rect = page.rect
-    st.write(f"📐 Page Size: {rect.width} x {rect.height}")
+    # Generate signature image
+    try:
+        font = ImageFont.truetype(fonts[font_choice], 50)  # font size 50
+    except:
+        font = ImageFont.load_default()
 
-    # Position sliders
-    x_pos = st.slider("X Position", 0, int(rect.width), int(rect.width // 2))
-    y_pos = st.slider("Y Position", 0, int(rect.height), int(rect.height // 2))
+    sig_img = Image.new("RGBA", (400, 100), (255, 255, 255, 0))  # transparent bg
+    draw = ImageDraw.Draw(sig_img)
+    draw.text((10, 10), user_name, font=font, fill="black")
 
-    # Draw signature on page
+    st.image(sig_img, caption="Generated Signature Preview")
+
+    st.write("👉 Adjust position of signature on document:")
+
+    # Sliders for position
+    x_pos = st.slider("X Position", 0, img.width, img.width - 200)
+    y_pos = st.slider("Y Position", 0, img.height, img.height - 100)
+
     if st.button("Apply Signature"):
-        page.insert_image(
-            fitz.Rect(x_pos, y_pos, x_pos + sign_img.width, y_pos + sign_img.height),
-            stream=sig_bytes,
-        )
+        doc_img = img.copy()
+        doc_img.paste(sig_img, (x_pos, y_pos), sig_img)
 
-        # Save signed PDF
-        output_io = io.BytesIO()
-        pdf.save(output_io)
-        st.success("✅ Signature applied successfully!")
+        st.image(doc_img, caption="Signed Document", use_container_width=True)
 
-        # Download button
+        # Save final signed document
+        buf = io.BytesIO()
+        doc_img.save(buf, format="PNG")
         st.download_button(
-            label="⬇️ Download Signed PDF",
-            data=output_io.getvalue(),
-            file_name="signed_document.pdf",
-            mime="application/pdf",
+            label="⬇️ Download Signed Document",
+            data=buf.getvalue(),
+            file_name="signed_document.png",
+            mime="image/png"
         )
