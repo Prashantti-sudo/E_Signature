@@ -1,56 +1,83 @@
 import streamlit as st
-from Crypto.PublicKey import RSA
-from Crypto.Hash import SHA256
-from Crypto.Signature import PKCS1_v1_5
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.exceptions import InvalidSignature
+import base64
 
-# Streamlit page setup
-st.set_page_config(page_title="🔐 Digital Signature Tool", page_icon="✍️", layout="centered")
+st.set_page_config(page_title="Digital Signature App", page_icon="🔐")
+st.title("🔐 Digital Signature App (RSA)")
 
-st.title("🔐 Digital Signature Application")
-st.write("Upload keys, data files, and create or verify digital signatures using RSA + SHA256.")
+# Sidebar selection
+mode = st.sidebar.radio("Choose Mode", ["Generate Keys", "Sign Data", "Verify Signature"])
 
-# Mode selection
-mode = st.radio("Choose Operation", ["Sign Data", "Verify Signature"])
+# Generate RSA Key Pair
+if mode == "Generate Keys":
+    st.subheader("🔑 Generate RSA Key Pair")
+    if st.button("Generate Keys"):
+        private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048
+        )
+        public_key = private_key.public_key()
 
-# Uploads
-key_file = st.file_uploader("Upload Key File (.pem)", type=["pem"])
-data_file = st.file_uploader("Upload Data File (any type)", type=None)
+        pem_private = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        pem_public = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
 
-if mode == "Sign Data":
-    if key_file and data_file:
+        st.download_button("⬇️ Download Private Key", pem_private, "private_key.pem")
+        st.download_button("⬇️ Download Public Key", pem_public, "public_key.pem")
+
+# Sign Data
+elif mode == "Sign Data":
+    st.subheader("✍️ Sign Data")
+    priv_key_file = st.file_uploader("Upload Private Key (.pem)", type=["pem"])
+    data_file = st.file_uploader("Upload File to Sign", type=["txt", "pdf", "png", "jpg", "jpeg"])
+
+    if priv_key_file and data_file:
+        private_key = serialization.load_pem_private_key(
+            priv_key_file.read(),
+            password=None,
+        )
+        data = data_file.read()
+
         if st.button("Generate Signature"):
-            try:
-                key = RSA.importKey(key_file.read())
-                data = data_file.read()
+            signature = private_key.sign(
+                data,
+                padding.PKCS1v15(),
+                hashes.SHA256()
+            )
+            signature_b64 = base64.b64encode(signature)
+            st.success("✅ Signature generated successfully!")
+            st.code(signature_b64.decode(), language="bash")
 
-                h = SHA256.new(data)
-                signer = PKCS1_v1_5.new(key)
-                signature = signer.sign(h)
+            st.download_button("⬇️ Download Signature", signature, "signature.sig")
 
-                st.success("✅ Signature generated successfully!")
-                st.download_button("⬇️ Download Signature File",
-                                   data=signature,
-                                   file_name="signature.bin",
-                                   mime="application/octet-stream")
-            except Exception as e:
-                st.error(f"Error generating signature: {e}")
-
+# Verify Signature
 elif mode == "Verify Signature":
-    sig_file = st.file_uploader("Upload Signature File (.bin)", type=["bin"])
-    if key_file and data_file and sig_file:
+    st.subheader("🔎 Verify Signature")
+    pub_key_file = st.file_uploader("Upload Public Key (.pem)", type=["pem"])
+    data_file = st.file_uploader("Upload File", type=["txt", "pdf", "png", "jpg", "jpeg"])
+    sig_file = st.file_uploader("Upload Signature File (.sig)", type=["sig"])
+
+    if pub_key_file and data_file and sig_file:
+        public_key = serialization.load_pem_public_key(pub_key_file.read())
+        data = data_file.read()
+        signature = sig_file.read()
+
         if st.button("Verify Signature"):
             try:
-                key = RSA.importKey(key_file.read())
-                data = data_file.read()
-                signature = sig_file.read()
-
-                h = SHA256.new(data)
-                verifier = PKCS1_v1_5.new(key)
-                valid = verifier.verify(h, signature)
-
-                if valid:
-                    st.success("✅ Signature Verification Successful!")
-                else:
-                    st.error("❌ Verification Failed! Signature is not valid.")
-            except Exception as e:
-                st.error(f"Error verifying signature: {e}")
+                public_key.verify(
+                    signature,
+                    data,
+                    padding.PKCS1v15(),
+                    hashes.SHA256()
+                )
+                st.success("✅ Signature is valid!")
+            except InvalidSignature:
+                st.error("❌ Verification failed! Invalid signature.")
