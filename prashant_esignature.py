@@ -65,3 +65,29 @@ if uploaded_file and user_name:
         fill_color="rgba(255,255,255,0)",
         stroke_width=0,
         stroke_color="rgba(0,0,0,0)",
+        background_image=img,
+        update_streamlit=True,
+        height=img.height // 2,
+        width=img.width // 2,
+        drawing_mode="transform",  # Allow moving
+        key="canvas"
+    )
+
+    if st.button("Apply Signature"):
+        doc_img = img.copy()
+        sig_img = previews[selected_style]
+
+        # Position signature at bottom-right (default)
+        position = (doc_img.width - sig_img.width - 50, doc_img.height - sig_img.height - 50)
+        doc_img.paste(sig_img, position, sig_img)
+
+        st.image(doc_img, caption="✅ Signed Document", use_container_width=True)
+
+        buf = io.BytesIO()
+        doc_img.save(buf, format="PNG")
+        st.download_button(
+            label="⬇️ Download Signed Document",
+            data=buf.getvalue(),
+            file_name="signed_document.png",
+            mime="image/png"
+        )
