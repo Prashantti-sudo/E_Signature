@@ -53,3 +53,4 @@ elif mode == "Verify Signature":
                 else:
                     st.error("❌ Verification Failed! Signature is not valid.")
             except Exception as e:
+                st.error(f"Error verifying signature: {e}")
