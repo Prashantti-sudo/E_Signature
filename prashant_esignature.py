@@ -1,67 +1,45 @@
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
 from PIL import Image
-import fitz  # PyMuPDF
 import io
 
-st.set_page_config(page_title="E-Signature on Documents", page_icon="✍️")
+st.set_page_config(page_title="Upload & Place Signature", page_icon="✍️")
 
-st.title("📄 E-Signature Application")
-st.write("Upload a file and sign it digitally.")
+st.title("📄 Digital Signature App")
+st.write("Upload a document and your signature, then place it on the document.")
 
-# Upload file
-uploaded_file = st.file_uploader("Upload a PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
+# Upload document
+uploaded_doc = st.file_uploader("Upload a Document (Image)", type=["png", "jpg", "jpeg"])
+# Upload signature
+uploaded_sign = st.file_uploader("Upload Your Signature (PNG preferred)", type=["png", "jpg", "jpeg"])
 
-if uploaded_file:
-    file_type = uploaded_file.type
-    
-    if "pdf" in file_type:
-        # Load first page of PDF as preview
-        pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-        page = pdf[0]
-        pix = page.get_pixmap()
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    else:
-        # Load image file
-        img = Image.open(uploaded_file).convert("RGB")
+if uploaded_doc and uploaded_sign:
+    # Load images
+    doc_img = Image.open(uploaded_doc).convert("RGBA")
+    sign_img = Image.open(uploaded_sign).convert("RGBA")
 
-    st.image(img, caption="Uploaded Document Preview", use_container_width=True)
+    # Resize signature for easier placement
+    sign_img = sign_img.resize((150, 60))
 
-    st.write("✍️ Draw your signature below:")
+    st.image(doc_img, caption="Uploaded Document", use_container_width=True)
 
-    # Create canvas for signature
-    canvas_result = st_canvas(
-        fill_color="rgba(255,255,255,0)",
-        stroke_width=2,
-        stroke_color="black",
-        background_color="white",
-        update_streamlit=True,
-        height=150,
-        width=400,
-        drawing_mode="freedraw",
-        key="canvas",
+    st.write("👉 Select where to place your signature")
+
+    # Slider for position
+    x_pos = st.slider("X Position", 0, doc_img.width, doc_img.width // 2)
+    y_pos = st.slider("Y Position", 0, doc_img.height, doc_img.height - 100)
+
+    # Preview signed document
+    preview_img = doc_img.copy()
+    preview_img.paste(sign_img, (x_pos, y_pos), sign_img)
+
+    st.image(preview_img, caption="Signed Document Preview", use_container_width=True)
+
+    # Download button
+    buf = io.BytesIO()
+    preview_img.save(buf, format="PNG")
+    st.download_button(
+        label="⬇️ Download Signed Document",
+        data=buf.getvalue(),
+        file_name="signed_document.png",
+        mime="image/png"
     )
-
-    if st.button("Apply Signature"):
-        if canvas_result.image_data is not None:
-            sig = Image.fromarray(canvas_result.image_data.astype("uint8"))
-            sig = sig.convert("RGBA")
-
-            # Resize signature smaller
-            sig = sig.resize((150, 60))
-
-            # Place signature at bottom-right of document
-            doc_img = img.copy()
-            doc_img.paste(sig, (doc_img.width - 200, doc_img.height - 100), sig)
-
-            st.image(doc_img, caption="Signed Document", use_container_width=True)
-
-            # Save as output
-            buf = io.BytesIO()
-            doc_img.save(buf, format="PNG")
-            st.download_button(
-                label="⬇️ Download Signed Document",
-                data=buf.getvalue(),
-                file_name="signed_document.png",
-                mime="image/png"
-            )
