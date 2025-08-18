@@ -1,71 +1,57 @@
-import io
 import streamlit as st
-from pypdf import PdfReader, PdfWriter
+from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
-from reportlab.lib.colors import HexColor
-import pdfplumber
-from PIL import Image
+from reportlab.lib.pagesizes import letter
+from io import BytesIO
 
-st.set_page_config(page_title="PDF E-Signature", layout="wide")
-st.title("✍️ PDF E-Signature Tool (Click to Place Signature)")
+def create_signature_pdf(signature_text, width, height, margin_x=50, margin_y=30):
+    """
+    Creates a temporary PDF with signature text at bottom-right
+    """
+    packet = BytesIO()
+    can = canvas.Canvas(packet, pagesize=(width, height))
+    can.setFont("Helvetica-Bold", 12)
+    can.drawRightString(width - margin_x, margin_y, signature_text)  # bottom-right
+    can.save()
+    packet.seek(0)
+    return PdfReader(packet)
 
-uploaded_pdf = st.file_uploader("Upload your PDF", type=["pdf"])
+def add_signature_to_pdf(uploaded_file, signature_text):
+    reader = PdfReader(uploaded_file)
+    writer = PdfWriter()
 
-if uploaded_pdf:
-    signature_text = st.text_input("Enter your signature", "John Doe")
-    font_size = st.slider("Font size", 8, 48, 18)
-
-    # Read PDF
-    reader = PdfReader(uploaded_pdf)
-    total_pages = len(reader.pages)
-    page_number = st.number_input("Select page", 1, total_pages, 1)
-
-    # Render page as image
-    with pdfplumber.open(uploaded_pdf) as pdf:
-        page = pdf.pages[page_number-1]
-        pil_img = page.to_image(resolution=150).original
-
-    st.image(pil_img, caption=f"Page {page_number}", use_container_width=True)
-
-    st.markdown("### 👇 Click on the PDF preview to place signature (X, Y)")
-    coords = st.session_state.get("coords", None)
-
-    # Let user input manually if not interactive
-    x = st.number_input("X Position", 0, int(pil_img.width), 50)
-    y = st.number_input("Y Position", 0, int(pil_img.height), 50)
-
-    if st.button("Apply Signature"):
-        # Get page dimensions
-        page = reader.pages[page_number-1]
+    for page in reader.pages:
         width = float(page.mediabox.width)
         height = float(page.mediabox.height)
 
-        # Convert from image coords to PDF coords
-        pdf_x = x * (width / pil_img.width)
-        pdf_y = height - (y * (height / pil_img.height))
+        # create signature layer
+        sig_pdf = create_signature_pdf(signature_text, width, height)
+        sig_page = sig_pdf.pages[0]
 
-        writer = PdfWriter()
-        for i, p in enumerate(reader.pages):
-            packet = io.BytesIO()
-            c = canvas.Canvas(packet, pagesize=(width, height))
-            if i == page_number-1:
-                c.setFont("Helvetica-Bold", font_size)
-                c.setFillColor(HexColor("#000000"))
-                c.drawString(pdf_x, pdf_y, signature_text)
-            c.save()
-            packet.seek(0)
-            overlay = PdfReader(packet)
-            p.merge_page(overlay.pages[0])
-            writer.add_page(p)
+        # merge signature on page
+        page.merge_page(sig_page)
+        writer.add_page(page)
 
-        output = io.BytesIO()
-        writer.write(output)
-        output.seek(0)
+    output = BytesIO()
+    writer.write(output)
+    output.seek(0)
+    return output
 
-        st.success("✅ Signature applied!")
+
+# ---------------- STREAMLIT UI ----------------
+st.title("📄 PDF E-Signature App")
+
+uploaded_file = st.file_uploader("Upload your PDF", type=["pdf"])
+signature_text = st.text_input("Enter your Signature Text (Name)", "")
+
+if uploaded_file and signature_text:
+    if st.button("Add Signature"):
+        signed_pdf = add_signature_to_pdf(uploaded_file, signature_text)
+
+        st.success("✅ Signature added at bottom-right corner!")
         st.download_button(
-            "📥 Download Signed PDF",
-            data=output,
+            label="📥 Download Signed PDF",
+            data=signed_pdf,
             file_name="signed_document.pdf",
             mime="application/pdf"
         )
