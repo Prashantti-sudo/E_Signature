@@ -2,7 +2,27 @@ import streamlit as st
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
+import os
+
+# Register custom fonts (make sure these .ttf files exist in "fonts" folder)
+FONTS = {
+    "Helvetica": None,
+    "Helvetica-Bold": None,
+    "Times-Roman": None,
+    "Times-Bold": None,
+    "Courier": None,
+    "Courier-Bold": None,
+    "Alex Brush": "fonts/AlexBrush-Regular.ttf",
+    "Dancing Script": "fonts/DancingScript-Regular.ttf",
+    "Birthstone": "fonts/Birthstone-Regular.ttf"
+}
+
+for font_name, font_path in FONTS.items():
+    if font_path and os.path.exists(font_path):
+        pdfmetrics.registerFont(TTFont(font_name, font_path))
 
 def create_signature_pdf(signature_text, width, height, font_name="Helvetica-Bold", font_size=14, margin_x=50, margin_y=30):
     """
@@ -49,19 +69,17 @@ def add_signature_to_pdf(uploaded_file, signature_text, font_name, font_size):
 
 
 # ---------------- STREAMLIT UI ----------------
-st.title("📄 PDF E-Signature App")
+st.title("✍️ PDF E-Signature App")
 
 uploaded_file = st.file_uploader("Upload your PDF", type=["pdf"])
 signature_text = st.text_input("Enter your Signature Text (Name)", "")
 
-# Font style dropdown
-font_name = st.selectbox(
-    "Choose Signature Font Style",
-    ["Helvetica", "Helvetica-Bold", "Times-Roman", "Times-Bold", "Courier", "Courier-Bold"]
-)
+# Font style dropdown (includes custom fonts if available)
+available_fonts = [f for f in FONTS.keys() if (FONTS[f] is None or os.path.exists(FONTS[f]))]
+font_name = st.selectbox("Choose Signature Font Style", available_fonts)
 
 # Font size slider
-font_size = st.slider("Select Font Size", 10, 36, 14)
+font_size = st.slider("Select Font Size", 10, 48, 18)
 
 if uploaded_file and signature_text:
     if st.button("Add Signature"):
