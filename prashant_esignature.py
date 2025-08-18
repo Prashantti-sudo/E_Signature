@@ -1,45 +1,62 @@
 import streamlit as st
+import fitz  # PyMuPDF
 from PIL import Image
 import io
 
-st.set_page_config(page_title="Upload & Place Signature", page_icon="✍️")
+st.set_page_config(page_title="PDF Signature App", page_icon="✍️")
 
-st.title("📄 Digital Signature App")
-st.write("Upload a document and your signature, then place it on the document.")
+st.title("📄 PDF Signature Application")
+st.write("Upload a PDF and your signature image, then place it on the PDF.")
 
-# Upload document
-uploaded_doc = st.file_uploader("Upload a Document (Image)", type=["png", "jpg", "jpeg"])
+# Upload PDF
+uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"])
 # Upload signature
-uploaded_sign = st.file_uploader("Upload Your Signature (PNG preferred)", type=["png", "jpg", "jpeg"])
+uploaded_sign = st.file_uploader("Upload Your Signature (PNG recommended)", type=["png", "jpg", "jpeg"])
 
-if uploaded_doc and uploaded_sign:
-    # Load images
-    doc_img = Image.open(uploaded_doc).convert("RGBA")
+if uploaded_pdf and uploaded_sign:
+    # Load PDF
+    pdf_data = uploaded_pdf.read()
+    pdf = fitz.open(stream=pdf_data, filetype="pdf")
+
+    # Load signature image
     sign_img = Image.open(uploaded_sign).convert("RGBA")
 
-    # Resize signature for easier placement
+    # Resize signature
     sign_img = sign_img.resize((150, 60))
 
-    st.image(doc_img, caption="Uploaded Document", use_container_width=True)
+    # Convert signature to bytes for PyMuPDF
+    sig_io = io.BytesIO()
+    sign_img.save(sig_io, format="PNG")
+    sig_bytes = sig_io.getvalue()
 
-    st.write("👉 Select where to place your signature")
+    # Page selection
+    page_num = st.number_input("Select Page Number", min_value=1, max_value=len(pdf), value=1)
+    page = pdf[page_num - 1]
 
-    # Slider for position
-    x_pos = st.slider("X Position", 0, doc_img.width, doc_img.width // 2)
-    y_pos = st.slider("Y Position", 0, doc_img.height, doc_img.height - 100)
+    # Get page size
+    rect = page.rect
+    st.write(f"📐 Page Size: {rect.width} x {rect.height}")
 
-    # Preview signed document
-    preview_img = doc_img.copy()
-    preview_img.paste(sign_img, (x_pos, y_pos), sign_img)
+    # Position sliders
+    x_pos = st.slider("X Position", 0, int(rect.width), int(rect.width // 2))
+    y_pos = st.slider("Y Position", 0, int(rect.height), int(rect.height // 2))
 
-    st.image(preview_img, caption="Signed Document Preview", use_container_width=True)
+    # Draw signature on page
+    if st.button("Apply Signature"):
+        page.insert_image(
+            fitz.Rect(x_pos, y_pos, x_pos + sign_img.width, y_pos + sign_img.height),
+            stream=sig_bytes,
+        )
 
-    # Download button
-    buf = io.BytesIO()
-    preview_img.save(buf, format="PNG")
-    st.download_button(
-        label="⬇️ Download Signed Document",
-        data=buf.getvalue(),
-        file_name="signed_document.png",
-        mime="image/png"
-    )
+        # Save signed PDF
+        output_io = io.BytesIO()
+        pdf.save(output_io)
+        st.success("✅ Signature applied successfully!")
+
+        # Download button
+        st.download_button(
+            label="⬇️ Download Signed PDF",
+            data=output_io.getvalue(),
+            file_name="signed_document.pdf",
+            mime="application/pdf",
+        )
