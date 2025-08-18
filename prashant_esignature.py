@@ -4,13 +4,13 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from io import BytesIO
 
-def create_signature_pdf(signature_text, width, height, font_size=14, margin_x=50, margin_y=30):
+def create_signature_pdf(signature_text, width, height, font_name="Helvetica-Bold", font_size=14, margin_x=50, margin_y=30):
     """
     Creates a temporary PDF with signature text + underline at bottom-right
     """
     packet = BytesIO()
     can = canvas.Canvas(packet, pagesize=(width, height))
-    can.setFont("Helvetica-Bold", font_size)
+    can.setFont(font_name, font_size)
 
     # Draw signature
     text_x = width - margin_x
@@ -18,7 +18,7 @@ def create_signature_pdf(signature_text, width, height, font_size=14, margin_x=5
     can.drawRightString(text_x, text_y, signature_text)
 
     # Draw underline
-    text_width = can.stringWidth(signature_text, "Helvetica-Bold", font_size)
+    text_width = can.stringWidth(signature_text, font_name, font_size)
     underline_y = text_y - 2
     can.line(text_x - text_width, underline_y, text_x, underline_y)
 
@@ -26,7 +26,7 @@ def create_signature_pdf(signature_text, width, height, font_size=14, margin_x=5
     packet.seek(0)
     return PdfReader(packet)
 
-def add_signature_to_pdf(uploaded_file, signature_text, font_size):
+def add_signature_to_pdf(uploaded_file, signature_text, font_name, font_size):
     reader = PdfReader(uploaded_file)
     writer = PdfWriter()
 
@@ -35,7 +35,7 @@ def add_signature_to_pdf(uploaded_file, signature_text, font_size):
         height = float(page.mediabox.height)
 
         # Create signature layer
-        sig_pdf = create_signature_pdf(signature_text, width, height, font_size)
+        sig_pdf = create_signature_pdf(signature_text, width, height, font_name, font_size)
         sig_page = sig_pdf.pages[0]
 
         # Merge signature on page
@@ -53,13 +53,21 @@ st.title("📄 PDF E-Signature App")
 
 uploaded_file = st.file_uploader("Upload your PDF", type=["pdf"])
 signature_text = st.text_input("Enter your Signature Text (Name)", "")
+
+# Font style dropdown
+font_name = st.selectbox(
+    "Choose Signature Font Style",
+    ["Helvetica", "Helvetica-Bold", "Times-Roman", "Times-Bold", "Courier", "Courier-Bold"]
+)
+
+# Font size slider
 font_size = st.slider("Select Font Size", 10, 36, 14)
 
 if uploaded_file and signature_text:
     if st.button("Add Signature"):
-        signed_pdf = add_signature_to_pdf(uploaded_file, signature_text, font_size)
+        signed_pdf = add_signature_to_pdf(uploaded_file, signature_text, font_name, font_size)
 
-        st.success("✅ Signature added with underline at bottom-right corner!")
+        st.success(f"✅ Signature added with {font_name} style at bottom-right corner!")
         st.download_button(
             label="📥 Download Signed PDF",
             data=signed_pdf,
