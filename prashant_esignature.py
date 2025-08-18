@@ -3,71 +3,76 @@ from PIL import Image, ImageDraw, ImageFont
 import fitz  # PyMuPDF
 import io
 
-st.set_page_config(page_title="E-Signature App", page_icon="✍️")
+st.set_page_config(page_title="E-Signature on PDF", page_icon="✍️")
 
-st.title("📄 Typed E-Signature Application")
-st.write("Upload a PDF/Image, type your name, pick a font, and place your signature.")
+st.title("📄 E-Signature on PDF")
+st.write("Upload a PDF, type your name, and place your signature.")
 
-# Upload document
-uploaded_file = st.file_uploader("Upload a PDF or Image", type=["pdf", "png", "jpg", "jpeg"])
+# Step 1: Upload PDF
+uploaded_file = st.file_uploader("Upload a PDF", type=["pdf"])
 
-# User input name
-user_name = st.text_input("✍️ Enter Your Name for Signature", "John Doe")
+# Step 2: Enter Name
+user_name = st.text_input("✍️ Enter Your Name", "John Doe")
 
-# Font options (ensure these .ttf files are available in your working directory)
+# Step 3: Font options
 font_options = {
-    "Pacifico": "Pacifico.ttf",
-    "Great Vibes": "GreatVibes-Regular.ttf",
-    "Dancing Script": "DancingScript-Regular.ttf",
     "Arial": "arial.ttf",
-    "Times New Roman": "times.ttf"
+    "Times New Roman": "times.ttf",
+    "Pacifico": "Pacifico.ttf",   # make sure fonts exist in your project
+    "Great Vibes": "GreatVibes-Regular.ttf",
+    "Dancing Script": "DancingScript-Regular.ttf"
 }
 
 if uploaded_file and user_name:
-    # Load file
-    file_type = uploaded_file.type
-    if "pdf" in file_type:
-        pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-        page = pdf[0]
-        pix = page.get_pixmap()
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-    else:
-        img = Image.open(uploaded_file).convert("RGB")
+    # Load PDF first page
+    pdf = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+    page = pdf[0]
+    pix = page.get_pixmap()
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-    st.image(img, caption="📄 Uploaded Document", use_container_width=True)
+    st.image(img, caption="📄 PDF Preview (First Page)", use_container_width=True)
 
-    # Signature preview
-    st.subheader("👉 Choose Signature Style")
-    selected_style = st.selectbox("Select font style", list(font_options.keys()))
+    # Select font and size
+    selected_style = st.selectbox("Select Font Style", list(font_options.keys()))
+    font_size = st.slider("Font Size", 40, 200, 100)
 
     try:
-        font = ImageFont.truetype(font_options[selected_style], 120)  # Larger signature
+        font = ImageFont.truetype(font_options[selected_style], font_size)
     except:
         font = ImageFont.load_default()
 
-    # Create transparent signature image
+    # Create signature preview
     sig_img = Image.new("RGBA", (1000, 300), (255, 255, 255, 0))
     draw = ImageDraw.Draw(sig_img)
     draw.text((20, 50), user_name, font=font, fill="black")
 
-    st.image(sig_img, caption=f"Signature Preview ({selected_style})")
+    st.image(sig_img, caption=f"🖊️ Signature Preview ({selected_style})")
 
-    # Position controls
-    st.subheader("🖼️ Position Signature on Document")
+    # Position with sliders (basic way)
+    st.subheader("📍 Place Signature")
     x_pos = st.slider("Move horizontally (X)", 0, img.width, img.width // 2)
-    y_pos = st.slider("Move vertically (Y)", 0, img.height, img.height - 200)
+    y_pos = st.slider("Move vertically (Y)", 0, img.height, img.height // 2)
 
-    if st.button("✅ Apply Signature"):
+    if st.button("✅ Apply Signature to PDF"):
         doc_img = img.copy()
         doc_img.paste(sig_img, (x_pos, y_pos), sig_img)
 
-        st.image(doc_img, caption="✅ Signed Document", use_container_width=True)
+        # Show final signed image
+        st.image(doc_img, caption="✅ Signed Document")
 
+        # Save as PDF
+        output_pdf = fitz.open()
+        rect = fitz.Rect(0, 0, doc_img.width, doc_img.height)
+        pdfbytes = io.BytesIO()
+        doc_img.save(pdfbytes, format="PNG")
+        img_pdf = output_pdf.new_page(width=rect.width, height=rect.height)
+        img_pdf.insert_image(rect, stream=pdfbytes.getvalue())
         buf = io.BytesIO()
-        doc_img.save(buf, format="PNG")
+        output_pdf.save(buf)
+
         st.download_button(
-            label="⬇️ Download Signed Document",
+            label="⬇️ Download Signed PDF",
             data=buf.getvalue(),
-            file_name="signed_document.png",
-            mime="image/png"
+            file_name="signed_document.pdf",
+            mime="application/pdf"
         )
