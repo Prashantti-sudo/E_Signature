@@ -1,7 +1,5 @@
 streamlit
 pillow
 reportlab
-streamlit-drawable-canvas
 pymupdf
-
-
+streamlit-drawable-canvas
