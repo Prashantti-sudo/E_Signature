@@ -1,10 +1,12 @@
 import streamlit as st
+from streamlit_drawable_canvas import st_canvas
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from io import BytesIO
+import fitz  # PyMuPDF
 import os, requests
 
 # 🎨 Fonts from Google
@@ -17,7 +19,6 @@ FONTS = {
 os.makedirs("fonts", exist_ok=True)
 
 def load_font(font_name):
-    """Download font if missing & register it"""
     url = FONTS.get(font_name)
     path = f"fonts/{font_name.replace(' ', '')}.ttf"
     if url and not os.path.exists(path):
@@ -28,26 +29,30 @@ def load_font(font_name):
         pdfmetrics.registerFont(TTFont(font_name, path))
         return font_name
     except:
-        return "Helvetica"  # fallback
+        return "Helvetica"
+
+def pdf_page_to_image(pdf_bytes):
+    """Render first PDF page as image for drag-drop canvas"""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc[0]
+    pix = page.get_pixmap()
+    return pix.tobytes("png")
 
 def add_signature(input_pdf, signature_text, font_name, x, y):
-    """Overlay signature text on PDF"""
     packet = BytesIO()
     c = canvas.Canvas(packet, pagesize=letter)
     c.setFont(font_name, 36)
     c.drawString(x, y, signature_text)
-    c.save()   # ✅ FIXED: properly closed
+    c.save()
     packet.seek(0)
 
-    # Merge with original PDF
     reader = PdfReader(input_pdf)
     writer = PdfWriter()
-
     sig_pdf = PdfReader(packet)
     sig_page = sig_pdf.pages[0]
 
     for i, page in enumerate(reader.pages):
-        if i == 0:  # Only first page for demo
+        if i == 0:  # only first page
             page.merge_page(sig_page)
         writer.add_page(page)
 
@@ -65,15 +70,30 @@ signature_text = st.text_input("Enter your signature text")
 font_choice = st.selectbox("Choose font", list(FONTS.keys()))
 font_name = load_font(font_choice)
 
-st.markdown("### Drag and Drop Signature Placement")
-st.write("👉 Use sliders to move your signature around the page.")
-
-# Simulated drag & drop with sliders
-x = st.slider("Move horizontally", 50, 500, 200)
-y = st.slider("Move vertically", 50, 700, 100)
-
 if uploaded_pdf and signature_text:
+    pdf_bytes = uploaded_pdf.read()
+    img_bytes = pdf_page_to_image(pdf_bytes)
+
+    st.markdown("### Drag your signature on the PDF preview")
+
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 0, 0, 0.0)",  # transparent
+        stroke_width=0,
+        background_image=img_bytes,
+        update_streamlit=True,
+        height=600,
+        width=450,
+        drawing_mode="transform",  # allows drag/drop box
+        key="canvas",
+    )
+
     if st.button("Apply Signature"):
-        signed_pdf = add_signature(uploaded_pdf, signature_text, font_name, x, y)
-        st.download_button("📥 Download Signed PDF", data=signed_pdf,
-                           file_name="signed_output.pdf", mime="application/pdf")
+        if canvas_result.json and len(canvas_result.json["objects"]) > 0:
+            obj = canvas_result.json["objects"][0]
+            x = obj["left"]
+            y = 600 - obj["top"]  # flip y-axis
+            signed_pdf = add_signature(BytesIO(pdf_bytes), signature_text, font_name, x, y)
+            st.download_button("📥 Download Signed PDF", data=signed_pdf,
+                               file_name="signed_output.pdf", mime="application/pdf")
+        else:
+            st.warning("⚠️ Please place your signature on the page.")
