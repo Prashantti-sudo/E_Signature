@@ -1,5 +1,5 @@
 streamlit>=1.36
 pymupdf>=1.24
-pillow>=10.0
+pillow>=10.2
 pdf2image>=1.17
 streamlit-drawable-canvas>=0.9
