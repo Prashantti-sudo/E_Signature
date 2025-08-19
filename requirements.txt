@@ -1,5 +1,6 @@
 streamlit
-pillow
+PyPDF2
 reportlab
 pymupdf
 streamlit-drawable-canvas
+requests
