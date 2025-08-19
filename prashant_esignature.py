@@ -2,6 +2,8 @@ import streamlit as st
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw, ImageFont
 import io
+from streamlit_drawable_canvas import st_canvas
+
 
 # --- Function to render signature text as an image ---
 def _render_text_image(text, font, color, opacity):
@@ -36,7 +38,7 @@ def _render_text_image(text, font, color, opacity):
 
 # --- Streamlit App ---
 def main():
-    st.title("📄 E-Signature PDF App")
+    st.title("📄 E-Signature PDF App (Drag & Drop)")
 
     uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"])
     signature_text = st.text_input("Enter your signature text", "Prashant Tiwari")
@@ -50,36 +52,45 @@ def main():
         pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x zoom
         pdf_image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
-        st.image(pdf_image, caption="PDF First Page Preview", use_column_width=True)
-
-        # Select font style
+        # Show signature preview
         font_size = st.slider("Font size", 20, 100, 50)
         font = ImageFont.truetype("DejaVuSans.ttf", font_size)  # default system font
-
-        # Render signature text as image
         sig_img = _render_text_image(signature_text, font, (0, 0, 0, 255), 1.0)
-        st.image(sig_img, caption="Your Signature Preview")
 
-        # Drag & drop positioning (simplified with sliders)
-        x = st.slider("X Position", 0, pdf_image.width, 100)
-        y = st.slider("Y Position", 0, pdf_image.height, 100)
+        st.subheader("🖱️ Drag & Drop your signature on the PDF")
+        canvas_result = st_canvas(
+            fill_color="rgba(255, 255, 255, 0)",  # transparent background
+            stroke_width=0,
+            background_image=pdf_image,
+            update_streamlit=True,
+            height=pdf_image.height,
+            width=pdf_image.width,
+            drawing_mode="transform",  # enables drag/resize
+            key="canvas",
+        )
 
         if st.button("Apply Signature to PDF"):
-            page.insert_image(
-                fitz.Rect(x, y, x + sig_img.width, y + sig_img.height),
-                stream=io.BytesIO(sig_img.tobytes("png")),
-                keep_proportion=True,
-            )
+            if canvas_result.json_data and "objects" in canvas_result.json_data:
+                # Take drag-drop position
+                obj = canvas_result.json_data["objects"][-1]
+                x, y, w, h = obj["left"], obj["top"], obj["width"], obj["height"]
 
-            # Save signed PDF
-            output_pdf = io.BytesIO()
-            pdf_doc.save(output_pdf)
-            pdf_doc.close()
+                # Insert signature into PDF
+                page.insert_image(
+                    fitz.Rect(x, y, x + w, y + h),
+                    stream=io.BytesIO(sig_img.tobytes("png")),
+                    keep_proportion=True,
+                )
 
-            st.success("✅ Signature applied successfully!")
-            st.download_button("Download Signed PDF", data=output_pdf.getvalue(),
-                               file_name="signed_document.pdf",
-                               mime="application/pdf")
+                # Save signed PDF
+                output_pdf = io.BytesIO()
+                pdf_doc.save(output_pdf)
+                pdf_doc.close()
+
+                st.success("✅ Signature applied successfully!")
+                st.download_button("Download Signed PDF", data=output_pdf.getvalue(),
+                                   file_name="signed_document.pdf",
+                                   mime="application/pdf")
 
 
 if __name__ == "__main__":
