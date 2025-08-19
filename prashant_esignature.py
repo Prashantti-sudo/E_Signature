@@ -3,7 +3,6 @@ import fitz  # PyMuPDF
 from PIL import Image, ImageDraw, ImageFont
 import io
 from streamlit_drawable_canvas import st_canvas
-import numpy as np
 
 
 # --- Function to render signature text as an image ---
@@ -60,14 +59,11 @@ def main():
 
         st.subheader("🖱️ Drag & Drop your signature on the PDF")
 
-        # Convert PIL image to numpy for canvas background
-        pdf_image_array = np.array(pdf_image)
-
-        # Drawable canvas for drag & drop
+        # Drawable canvas for drag & drop (use PIL image directly!)
         canvas_result = st_canvas(
             fill_color="rgba(255, 255, 255, 0)",
             stroke_width=0,
-            background_image=pdf_image_array,
+            background_image=pdf_image,
             update_streamlit=True,
             height=pdf_image.height,
             width=pdf_image.width,
