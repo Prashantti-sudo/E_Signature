@@ -17,21 +17,30 @@ uploaded_signature = st.file_uploader("Or upload signature image", type=["png", 
 typed_name = st.text_input("Or type name to create signature")
 font_size = st.slider("Font Size", 30, 100, 50)
 
+# --- Optional: specify Poppler path (Windows) ---
+poppler_path = st.text_input("Optional: Poppler path (Windows users only)", "")
+
 # --- Process PDF ---
 if uploaded_pdf:
     pdf_bytes = uploaded_pdf.read()
     
     try:
         # Convert PDF first page to image
-        pages = convert_from_bytes(pdf_bytes)
+        if poppler_path.strip() == "":
+            pages = convert_from_bytes(pdf_bytes)
+        else:
+            pages = convert_from_bytes(pdf_bytes, poppler_path=poppler_path)
         pdf_image = pages[0]
     except pdf2image_exceptions.PDFInfoNotInstalledError:
         st.error("""
         Poppler is not installed or not found in PATH!  
         Please install Poppler:
+
         - **Linux:** `sudo apt install poppler-utils`
         - **Mac:** `brew install poppler`
         - **Windows:** Download from [Poppler Windows](https://github.com/oschwartz10612/poppler-windows/releases/) and add `bin` folder to PATH.
+
+        Optionally, Windows users can specify the Poppler `bin` folder path above.
         """)
         st.stop()
 
@@ -69,7 +78,7 @@ if uploaded_pdf:
     if st.button("Save Signed PDF"):
         if canvas_result.image_data is not None:
             output_image = Image.fromarray(canvas_result.image_data.astype("uint8"), "RGBA")
-            output_pdf = "signed_output.pdf"  # Fixed unterminated string
+            output_pdf = "signed_output.pdf"
             output_image.convert("RGB").save(output_pdf)
             st.success("PDF saved successfully!")
             with open(output_pdf, "rb") as f:
