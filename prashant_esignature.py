@@ -69,4 +69,8 @@ if uploaded_pdf:
     if st.button("Save Signed PDF"):
         if canvas_result.image_data is not None:
             output_image = Image.fromarray(canvas_result.image_data.astype("uint8"), "RGBA")
-            output_pdf = "signed_output.p
+            output_pdf = "signed_output.pdf"  # Fixed unterminated string
+            output_image.convert("RGB").save(output_pdf)
+            st.success("PDF saved successfully!")
+            with open(output_pdf, "rb") as f:
+                st.download_button("Download Signed PDF", f, file_name="signed_output.pdf", mime="application/pdf")
