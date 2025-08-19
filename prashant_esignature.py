@@ -1,61 +1,63 @@
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import fitz  # PyMuPDF
 import io
+from streamlit_drawable_canvas import st_canvas
 
-st.title("E-Signature PDF Tool (No Poppler Needed)")
+st.title("Drag & Drop E-Signature on PDF")
 
 # Upload PDF
-uploaded_pdf = st.file_uploader("Upload PDF", type=["pdf"])
+uploaded_pdf = st.file_uploader("Upload your PDF", type=["pdf"])
+signature_text = st.text_input("Enter your signature name:")
 
-if uploaded_pdf is not None:
-    # Open PDF with PyMuPDF
-    pdf_document = fitz.open(stream=uploaded_pdf.read(), filetype="pdf")
+font_size = st.slider("Font size", 20, 100, 40)
+color = st.color_picker("Signature color", "#FF0000")
+font_path = "arial.ttf"  # Use any TTF font you have
 
-    # Show first page as preview
-    page = pdf_document[0]
-    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # zoom for better quality
-    img_bytes = pix.tobytes("png")
-    st.image(img_bytes, caption="Page 1 Preview")
+if uploaded_pdf and signature_text:
+    # Generate signature image
+    font = ImageFont.truetype(font_path, font_size)
+    text_width, text_height = font.getsize(signature_text)
+    signature_img = Image.new("RGBA", (text_width + 20, text_height + 20), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(signature_img)
+    draw.text((10, 10), signature_text, font=font, fill=color)
 
-    # Signature canvas
-    st.subheader("Draw your signature below")
+    st.image(signature_img, caption="Signature Preview")
+
+    # Convert PDF first page to image for canvas
+    pdf_bytes = uploaded_pdf.read()
+    pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = pdf_doc[0]
+    pix = page.get_pixmap()
+    pdf_image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+    st.markdown("**Drag the signature onto the PDF preview:**")
+
     canvas_result = st_canvas(
-        fill_color="rgba(0,0,0,0)",  
-        stroke_width=3,
-        stroke_color="black",
-        background_color="white",
-        width=400,
-        height=150,
-        drawing_mode="freedraw",
-        key="canvas",
+        fill_color="rgba(0,0,0,0)",
+        stroke_width=0,
+        background_image=pdf_image,
+        update_streamlit=True,
+        height=pix.height,
+        width=pix.width,
+        drawing_mode="image",
+        image_data=signature_img
     )
 
-    if st.button("Place Signature and Download PDF"):
-        if canvas_result.image_data is not None:
-            # Convert signature to image
-            sig_img = Image.fromarray(canvas_result.image_data.astype("uint8"), "RGBA")
-            sig_img = sig_img.convert("RGB")
-            
-            # Save signature temporarily
-            sig_bytes = io.BytesIO()
-            sig_img.save(sig_bytes, format="PNG")
-            sig_bytes.seek(0)
+    if st.button("Save Signed PDF"):
+        if canvas_result.json_data is not None:
+            # Get the position of signature
+            for obj in canvas_result.json_data["objects"]:
+                if obj["type"] == "image":
+                    x, y = obj["left"], obj["top"]
+                    # Insert signature into PDF
+                    sig_byte_arr = io.BytesIO()
+                    signature_img.save(sig_byte_arr, format="PNG")
+                    sig_byte_arr = sig_byte_arr.getvalue()
+                    page.insert_image(fitz.Rect(x, y, x + text_width, y + text_height), stream=sig_byte_arr)
 
-            # Insert signature into first page
-            rect = fitz.Rect(100, 500, 300, 600)  # position of signature
-            page.insert_image(rect, stream=sig_bytes.getvalue())
-
-            # Save modified PDF
-            output_pdf = io.BytesIO()
-            pdf_document.save(output_pdf)
-            output_pdf.seek(0)
-
-            st.success("✅ Signature added to PDF!")
-            st.download_button(
-                "Download Signed PDF",
-                output_pdf,
-                file_name="signed_output.pdf",
-                mime="application/pdf",
-            )
+            output_pdf = "signed_pdf.pdf"
+            pdf_doc.save(output_pdf)
+            pdf_doc.close()
+            st.success("PDF signed successfully!")
+            st.download_button("Download Signed PDF", data=open(output_pdf, "rb").read(), file_name="signed_pdf.pdf")
