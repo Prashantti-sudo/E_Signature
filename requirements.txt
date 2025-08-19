@@ -1,5 +1,6 @@
 streamlit
-PyPDF2
-reportlab
-Pillow
+pillow
 streamlit-drawable-canvas
+pdf2image
+reportlab
+
