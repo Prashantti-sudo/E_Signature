@@ -60,10 +60,10 @@ def main():
 
         st.subheader("🖱️ Drag & Drop your signature on the PDF")
 
-        # ✅ Convert PIL image to numpy for canvas background
+        # Convert PIL image to numpy for canvas background
         pdf_image_array = np.array(pdf_image)
 
-        # ✅ Drawable canvas for drag & drop
+        # Drawable canvas for drag & drop
         canvas_result = st_canvas(
             fill_color="rgba(255, 255, 255, 0)",
             stroke_width=0,
@@ -75,33 +75,38 @@ def main():
             key="canvas",
         )
 
+        # Apply signature button
         if st.button("Apply Signature to PDF"):
-    if canvas_result.json_data and "objects" in canvas_result.json_data:
-        # Take drag-drop position
-        obj = canvas_result.json_data["objects"][-1]
-        x, y, w, h = obj["left"], obj["top"], obj["width"], obj["height"]
+            if canvas_result.json_data and "objects" in canvas_result.json_data:
+                # Take drag-drop position
+                obj = canvas_result.json_data["objects"][-1]
+                x, y, w, h = obj["left"], obj["top"], obj["width"], obj["height"]
 
-        # Convert signature image to PNG byte stream
-        sig_bytes = io.BytesIO()
-        sig_img.save(sig_bytes, format="PNG")
-        sig_bytes.seek(0)
+                # Convert signature image to PNG byte stream
+                sig_bytes = io.BytesIO()
+                sig_img.save(sig_bytes, format="PNG")
+                sig_bytes.seek(0)
 
-        # Insert signature into PDF
-        page.insert_image(
-            fitz.Rect(x, y, x + w, y + h),
-            stream=sig_bytes,
-            keep_proportion=True,
-        )
+                # Insert signature into PDF
+                page.insert_image(
+                    fitz.Rect(x, y, x + w, y + h),
+                    stream=sig_bytes,
+                    keep_proportion=True,
+                )
 
-        # Save signed PDF
-        output_pdf = io.BytesIO()
-        pdf_doc.save(output_pdf)
-        pdf_doc.close()
+                # Save signed PDF
+                output_pdf = io.BytesIO()
+                pdf_doc.save(output_pdf)
+                pdf_doc.close()
 
-        st.success("✅ Signature applied successfully!")
-        st.download_button(
-            "Download Signed PDF",
-            data=output_pdf.getvalue(),
-            file_name="signed_document.pdf",
-            mime="application/pdf"
-        )
+                st.success("✅ Signature applied successfully!")
+                st.download_button(
+                    "Download Signed PDF",
+                    data=output_pdf.getvalue(),
+                    file_name="signed_document.pdf",
+                    mime="application/pdf",
+                )
+
+
+if __name__ == "__main__":
+    main()
