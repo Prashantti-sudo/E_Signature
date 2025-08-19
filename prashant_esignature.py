@@ -1,99 +1,32 @@
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
-from PyPDF2 import PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from io import BytesIO
-import fitz  # PyMuPDF
-import os, requests
+from PIL import Image
+import io
 
-# 🎨 Fonts from Google
-FONTS = {
-    "Dancing Script": "https://github.com/google/fonts/raw/main/ofl/dancingscript/DancingScript-Regular.ttf",
-    "Alex Brush": "https://github.com/google/fonts/raw/main/ofl/alexbrush/AlexBrush-Regular.ttf",
-    "Birthstone": "https://github.com/google/fonts/raw/main/ofl/birthstone/Birthstone-Regular.ttf",
-}
+st.title("Signature Pad with PDF/Image Upload")
 
-os.makedirs("fonts", exist_ok=True)
+# Step 1: Upload PDF or Image
+uploaded_file = st.file_uploader("Upload a PDF or Image", type=["png", "jpg", "jpeg"])
 
-def load_font(font_name):
-    url = FONTS.get(font_name)
-    path = f"fonts/{font_name.replace(' ', '')}.ttf"
-    if url and not os.path.exists(path):
-        r = requests.get(url)
-        with open(path, "wb") as f:
-            f.write(r.content)
-    try:
-        pdfmetrics.registerFont(TTFont(font_name, path))
-        return font_name
-    except:
-        return "Helvetica"
+if uploaded_file is not None:
+    # Convert uploaded bytes into an image
+    image = Image.open(io.BytesIO(uploaded_file.read()))
+    st.image(image, caption="Uploaded File Preview", use_column_width=True)
 
-def pdf_page_to_image(pdf_bytes):
-    """Render first PDF page as image for drag-drop canvas"""
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    page = doc[0]
-    pix = page.get_pixmap()
-    return pix.tobytes("png")
-
-def add_signature(input_pdf, signature_text, font_name, x, y):
-    packet = BytesIO()
-    c = canvas.Canvas(packet, pagesize=letter)
-    c.setFont(font_name, 36)
-    c.drawString(x, y, signature_text)
-    c.save()
-    packet.seek(0)
-
-    reader = PdfReader(input_pdf)
-    writer = PdfWriter()
-    sig_pdf = PdfReader(packet)
-    sig_page = sig_pdf.pages[0]
-
-    for i, page in enumerate(reader.pages):
-        if i == 0:  # only first page
-            page.merge_page(sig_page)
-        writer.add_page(page)
-
-    output_stream = BytesIO()
-    writer.write(output_stream)
-    output_stream.seek(0)
-    return output_stream
-
-
-# ================== Streamlit UI ==================
-st.title("🖊️ Drag & Drop E-Signature")
-
-uploaded_pdf = st.file_uploader("Upload PDF", type=["pdf"])
-signature_text = st.text_input("Enter your signature text")
-font_choice = st.selectbox("Choose font", list(FONTS.keys()))
-font_name = load_font(font_choice)
-
-if uploaded_pdf and signature_text:
-    pdf_bytes = uploaded_pdf.read()
-    img_bytes = pdf_page_to_image(pdf_bytes)
-
-    st.markdown("### Drag your signature on the PDF preview")
+    # Step 2: Draw signature on canvas
+    st.write("Draw your signature below:")
 
     canvas_result = st_canvas(
-        fill_color="rgba(255, 0, 0, 0.0)",  # transparent
-        stroke_width=0,
-        background_image=img_bytes,
+        fill_color="rgba(255, 0, 0, 0)",  # Transparent background
+        stroke_width=2,
+        stroke_color="#000000",
+        background_color="#ffffff",
         update_streamlit=True,
-        height=600,
-        width=450,
-        drawing_mode="transform",  # allows drag/drop box
+        height=150,
+        drawing_mode="freedraw",
         key="canvas",
     )
 
-    if st.button("Apply Signature"):
-        if canvas_result.json and len(canvas_result.json["objects"]) > 0:
-            obj = canvas_result.json["objects"][0]
-            x = obj["left"]
-            y = 600 - obj["top"]  # flip y-axis
-            signed_pdf = add_signature(BytesIO(pdf_bytes), signature_text, font_name, x, y)
-            st.download_button("📥 Download Signed PDF", data=signed_pdf,
-                               file_name="signed_output.pdf", mime="application/pdf")
-        else:
-            st.warning("⚠️ Please place your signature on the page.")
+    # Step 3: Show signature
+    if canvas_result.image_data is not None:
+        st.image(canvas_result.image_data, caption="Your Signature")
