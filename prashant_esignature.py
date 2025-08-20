@@ -1,10 +1,11 @@
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas
+from streamlit_drawable_canvas import st_canvas  # ✅ works after pip install streamlit-drawable-canvas
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from pdf2image import convert_from_bytes
 import tempfile
+import io
 
 st.set_page_config(page_title="E-Signature App", layout="wide")
 
@@ -62,7 +63,7 @@ if uploaded_file and signature_text:
                 c = canvas.Canvas(temp_sig.name, pagesize=letter)
                 c.setFont("Helvetica", font_size)
 
-                page_height = letter[1]  # Letter page height (792 pts)
+                page_height = letter[1]  # 792 points (for letter size)
                 for obj in objects:
                     x, y = obj["left"], obj["top"]
                     c.drawString(x, page_height - y, signature_text)  # invert Y
