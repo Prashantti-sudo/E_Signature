@@ -86,4 +86,4 @@ if uploaded_pdf and signature_text:
         # Download button
         st.download_button(
             "📥 Download Signed PDF",
-            signed
+            signed)
