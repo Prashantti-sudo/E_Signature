@@ -4,13 +4,7 @@ from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.colors import HexColor
-
-# Try importing pdf2image for preview
-try:
-    from pdf2image import convert_from_bytes
-    PREVIEW_AVAILABLE = True
-except ImportError:
-    PREVIEW_AVAILABLE = False
+import fitz  # PyMuPDF for preview
 
 
 def add_signature(input_pdf, signature_text, x, y, page_num, font_size, font_style, font_color):
@@ -47,6 +41,15 @@ def add_signature(input_pdf, signature_text, x, y, page_num, font_size, font_sty
     return output_buffer
 
 
+def preview_pdf(pdf_bytes, page_num=0):
+    """Render PDF page as image using PyMuPDF (no Poppler needed)."""
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    page = doc.load_page(page_num)
+    pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))  # 2x zoom for clarity
+    img_bytes = pix.tobytes("png")
+    return img_bytes
+
+
 # ----------------- Streamlit UI -----------------
 st.title("🖊️ PDF E-Signature Tool")
 
@@ -69,21 +72,17 @@ if uploaded_pdf and signature_text:
             font_size, font_style, font_color
         )
 
-        # Show preview only if Poppler is available
-        if PREVIEW_AVAILABLE:
-            try:
-                images = convert_from_bytes(
-                    signed_pdf.getvalue(),
-                    first_page=page_num+1,
-                    last_page=page_num+1
-                )
-                st.image(images[0], caption="Preview of signed PDF", use_container_width=True)
-            except Exception as e:
-                st.warning("⚠️ Could not generate preview (Poppler missing). You can still download the signed PDF.")
-        else:
-            st.info("ℹ️ Preview not available (Poppler not installed).")
+        # Show preview using PyMuPDF
+        try:
+            img_bytes = preview_pdf(signed_pdf.getvalue(), page_num)
+            st.image(img_bytes, caption="Preview of signed PDF", use_container_width=True)
+        except Exception as e:
+            st.warning(f"⚠️ Could not generate preview: {e}")
 
         # Download button
         st.download_button(
             "📥 Download Signed PDF",
-            signed_pdf)
+            signed_pdf,
+            file_name="signed_output.pdf",
+            mime="application/pdf"
+        )
