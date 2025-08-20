@@ -4,7 +4,14 @@ from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.colors import HexColor
-from pdf2image import convert_from_bytes
+
+# Try importing pdf2image for preview
+try:
+    from pdf2image import convert_from_bytes
+    PREVIEW_AVAILABLE = True
+except ImportError:
+    PREVIEW_AVAILABLE = False
+
 
 def add_signature(input_pdf, signature_text, x, y, page_num, font_size, font_style, font_color):
     # Create a PDF with the signature
@@ -56,20 +63,27 @@ font_style = st.selectbox("Font Style", ["Helvetica", "Courier", "Times-Roman"])
 font_color = st.color_picker("Pick Font Color", "#000000")
 
 if uploaded_pdf and signature_text:
-    if st.button("Preview Signature"):
+    if st.button("Preview / Sign PDF"):
         signed_pdf = add_signature(
             uploaded_pdf, signature_text, x, y, page_num,
             font_size, font_style, font_color
         )
 
-        # Convert first page of signed PDF to image for preview
-        images = convert_from_bytes(signed_pdf.getvalue(), first_page=page_num+1, last_page=page_num+1)
-        st.image(images[0], caption="Preview of signed PDF", use_container_width=True)
+        # Show preview only if Poppler is available
+        if PREVIEW_AVAILABLE:
+            try:
+                images = convert_from_bytes(
+                    signed_pdf.getvalue(),
+                    first_page=page_num+1,
+                    last_page=page_num+1
+                )
+                st.image(images[0], caption="Preview of signed PDF", use_container_width=True)
+            except Exception as e:
+                st.warning("⚠️ Could not generate preview (Poppler missing). You can still download the signed PDF.")
+        else:
+            st.info("ℹ️ Preview not available (Poppler not installed).")
 
         # Download button
         st.download_button(
             "📥 Download Signed PDF",
-            signed_pdf,
-            file_name="signed_output.pdf",
-            mime="application/pdf"
-        )
+            signed
