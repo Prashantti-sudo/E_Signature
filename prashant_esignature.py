@@ -1,88 +1,55 @@
 import streamlit as st
-from streamlit_drawable_canvas import st_canvas  # ✅ works after pip install streamlit-drawable-canvas
+import io
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
-from pdf2image import convert_from_bytes
-import tempfile
-import io
 
-st.set_page_config(page_title="E-Signature App", layout="wide")
+def add_signature(input_pdf, output_pdf, signature_text, x, y, page_num=0):
+    # Create a PDF with the signature text
+    packet = io.BytesIO()
+    can = canvas.Canvas(packet, pagesize=letter)
+    can.setFont("Helvetica-Bold", 18)
+    can.drawString(x, y, signature_text)
+    can.save()
 
-st.title("📑 E-Signature App")
+    # Move to start
+    packet.seek(0)
 
-st.markdown("""
-⚠️ **Note**: True drag-and-drop needs a custom front-end.  
-This app **mimics** the effect: you draw a box on the page,  
-and your signature text will be placed there.
-""")
+    # Read PDFs
+    new_pdf = PdfReader(packet)
+    existing_pdf = PdfReader(input_pdf)
+    output = PdfWriter()
 
-# Step 1: Upload PDF
-uploaded_file = st.file_uploader("Upload your PDF", type=["pdf"])
+    # Merge signature into the selected page
+    page = existing_pdf.pages[page_num]
+    page.merge_page(new_pdf.pages[0])
+    output.add_page(page)
 
-# Step 2: Enter signature text
-signature_text = st.text_input("Enter your signature text:")
-font_size = st.slider("Font Size", 20, 80, 40)
+    # Add remaining pages
+    for i in range(1, len(existing_pdf.pages)):
+        output.add_page(existing_pdf.pages[i])
 
-if uploaded_file and signature_text:
-    # Read PDF
-    pdf_bytes = uploaded_file.read()
-    pdf_reader = PdfReader(io.BytesIO(pdf_bytes))
-    total_pages = len(pdf_reader.pages)
-    st.write(f"📄 Total Pages: {total_pages}")
+    # Save to file
+    with open(output_pdf, "wb") as out_file:
+        output.write(out_file)
 
-    # Select page to sign
-    page_number = st.number_input("Select page number", 1, total_pages, 1)
+    return output_pdf
 
-    # Step 3: Convert selected PDF page to image for preview
-    images = convert_from_bytes(pdf_bytes, dpi=150)
-    page_img = images[page_number - 1]
 
-    # Step 4: Show page in canvas background
-    st.write("👉 Draw a red box where you want to place the signature:")
-    canvas_result = st_canvas(
-        fill_color="rgba(255, 0, 0, 0.0)",
-        stroke_width=2,
-        stroke_color="red",
-        background_image=page_img,
-        update_streamlit=True,
-        height=page_img.height,
-        width=page_img.width,
-        drawing_mode="rect",
-        key="canvas",
-    )
+# ----------------- Streamlit UI -----------------
+st.title("🖊️ PDF E-Signature Tool")
 
-    # Step 5: Place signature in PDF
-    if st.button("✅ Place Signature and Save PDF"):
-        if canvas_result.json_data is not None:
-            objects = canvas_result.json_data["objects"]
+uploaded_pdf = st.file_uploader("Upload your PDF", type="pdf")
 
-            if len(objects) > 0:
-                # Create temp PDF with signature(s)
-                temp_sig = tempfile.NamedTemporaryFile(delete=False, suffix=".pdf")
-                c = canvas.Canvas(temp_sig.name, pagesize=letter)
-                c.setFont("Helvetica", font_size)
+signature_text = st.text_input("Enter your name (signature):")
+x = st.number_input("Horizontal position (X)", min_value=0, max_value=800, value=100)
+y = st.number_input("Vertical position (Y)", min_value=0, max_value=800, value=100)
+page_num = st.number_input("Page number (starting from 0)", min_value=0, value=0)
 
-                page_height = letter[1]  # 792 points (for letter size)
-                for obj in objects:
-                    x, y = obj["left"], obj["top"]
-                    c.drawString(x, page_height - y, signature_text)  # invert Y
-                c.save()
+if uploaded_pdf and signature_text:
+    if st.button("Add Signature"):
+        output_path = "signed_output.pdf"
+        add_signature(uploaded_pdf, output_path, signature_text, x, y, page_num)
 
-                # Merge into original PDF
-                pdf_writer = PdfWriter()
-                for i, page in enumerate(pdf_reader.pages):
-                    if i == page_number - 1:
-                        sig_reader = PdfReader(temp_sig.name)
-                        page.merge_page(sig_reader.pages[0])
-                    pdf_writer.add_page(page)
-
-                output_filename = "signed_output.pdf"
-                with open(output_filename, "wb") as out:
-                    pdf_writer.write(out)
-
-                st.success("✅ Signature placed successfully!")
-                with open(output_filename, "rb") as f:
-                    st.download_button("⬇️ Download Signed PDF", f, file_name="signed_output.pdf")
-            else:
-                st.warning("⚠️ Please draw a box on the page to place the signature.")
+        with open(output_path, "rb") as f:
+            st.download_button("📥 Download Signed PDF", f, file_name="signed_output.pdf")
